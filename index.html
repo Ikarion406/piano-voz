@@ -3,50 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Piano con Voz FINAL</title>
+<title>Piano Voz Seguro</title>
 
 <style>
-body {
-  background:#111;
-  color:white;
-  font-family:Arial;
-  text-align:center;
-}
-
-#piano {
-  display:flex;
-  flex-wrap:wrap;
-  justify-content:center;
-  margin-top:20px;
-}
-
+body { background:#111; color:white; text-align:center; font-family:Arial; }
+#piano { display:flex; flex-wrap:wrap; justify-content:center; margin-top:20px; }
 .key {
-  width:34px;
-  height:150px;
-  margin:1px;
-  background:white;
-  color:black;
-  font-size:9px;
-  display:flex;
-  align-items:flex-end;
-  justify-content:center;
+  width:34px; height:150px; margin:1px;
+  background:white; color:black; font-size:9px;
+  display:flex; align-items:flex-end; justify-content:center;
 }
-
-.active {
-  background:#00ffcc !important;
-}
-
-button {
-  margin-top:20px;
-  padding:10px 20px;
-  font-size:16px;
-}
+.active { background:#00ffcc !important; }
+button { padding:10px 20px; font-size:16px; margin-top:20px; }
 </style>
 </head>
 
 <body>
 
-<h1>🎤 Piano con Voz (Funcional)</h1>
+<h1>Piano con Voz (sin errores absurdos)</h1>
 <button onclick="start()">Iniciar</button>
 
 <div id="status">Estado: esperando</div>
@@ -54,19 +28,19 @@ button {
 
 <div id="piano"></div>
 
-<script src="https://unpkg.com/pitchy@2.0.3/dist/pitchy.min.js"></script>
+<!-- IMPORTANTE -->
+<script src="https://cdn.jsdelivr.net/npm/pitchy@2.0.3/dist/pitchy.min.js"></script>
 
 <script>
-let audioContext, analyser, detector, input;
-let lastNote = "";
-let pitchHistory = [];
-
+let audioContext, analyser, detector;
 let osc, gainNode;
+let lastNote = "";
 
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
-(function createPiano(){
-  const piano = document.getElementById("piano");
+// 🎹 crear piano
+(function(){
+  let piano=document.getElementById("piano");
   for(let o=2;o<=5;o++){
     for(let n of notes){
       let key=document.createElement("div");
@@ -81,32 +55,29 @@ const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 async function start(){
   const status = document.getElementById("status");
 
+  // 🔥 validar librería
+  if (typeof Pitchy === "undefined") {
+    status.innerText = "❌ Error: Pitchy no cargó (internet/CDN)";
+    console.error("Pitchy no está disponible");
+    return;
+  }
+
   try {
-    status.innerText = "Solicitando micrófono...";
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error("Tu navegador no soporta micrófono");
-    }
-
     const stream = await navigator.mediaDevices.getUserMedia({audio:true});
 
-    status.innerText = "Micrófono conectado 🎤";
-
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    await audioContext.resume();
 
- 
-    if (audioContext.state === "suspended") {
-      await audioContext.resume();
-    }
-
-    input = audioContext.createMediaStreamSource(stream);
+    const input = audioContext.createMediaStreamSource(stream);
 
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 2048;
+
     input.connect(analyser);
 
     detector = Pitchy.PitchDetector.forFloat32Array(analyser.fftSize);
 
+    // 🔊 sonido
     osc = audioContext.createOscillator();
     gainNode = audioContext.createGain();
 
@@ -115,14 +86,14 @@ async function start(){
 
     osc.connect(gainNode);
     gainNode.connect(audioContext.destination);
-
     osc.start();
 
+    status.innerText = "🎤 Detectando voz...";
     detect();
 
   } catch(e){
     console.error(e);
-    status.innerText = "❌ Error: usa Chrome o revisa permisos";
+    status.innerText = "❌ Error de micrófono";
   }
 }
 
@@ -132,32 +103,25 @@ function detect(){
 
   const [pitch, clarity] = detector.findPitch(buffer, audioContext.sampleRate);
 
-  if(clarity > 0.85 && pitch > 80 && pitch < 1000){
-
-    pitchHistory.push(pitch);
-    if(pitchHistory.length > 6) pitchHistory.shift();
-
-    let avg = pitchHistory.reduce((a,b)=>a+b,0)/pitchHistory.length;
-
-    let note = freqToNote(avg);
+  if(clarity > 0.8 && pitch > 80 && pitch < 1000){
+    let note = freqToNote(pitch);
 
     if(note !== lastNote){
       highlight(note);
       document.getElementById("noteDisplay").innerText =
-        "Nota: " + note + " (" + avg.toFixed(1) + " Hz)";
+        "Nota: " + note;
       lastNote = note;
     }
 
-    osc.frequency.setTargetAtTime(avg, audioContext.currentTime, 0.05);
-    gainNode.gain.setTargetAtTime(0.3, audioContext.currentTime, 0.05);
+    osc.frequency.setValueAtTime(pitch, audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
 
   } else {
-    gainNode.gain.setTargetAtTime(0, audioContext.currentTime, 0.1);
+    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
   }
 
   requestAnimationFrame(detect);
 }
-
 
 function freqToNote(freq){
   const A4 = 440;
