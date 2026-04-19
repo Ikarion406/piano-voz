@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Piano con Voz FUNCIONAL</title>
+<title>Piano con Voz FINAL</title>
 
 <style>
 body {
@@ -21,12 +21,12 @@ body {
 }
 
 .key {
-  width:35px;
-  height:160px;
+  width:34px;
+  height:150px;
   margin:1px;
   background:white;
   color:black;
-  font-size:10px;
+  font-size:9px;
   display:flex;
   align-items:flex-end;
   justify-content:center;
@@ -46,8 +46,9 @@ button {
 
 <body>
 
-<h1>🎤 Piano con Voz</h1>
+<h1>🎤 Piano con Voz (Funcional)</h1>
 <button onclick="start()">Iniciar</button>
+
 <div id="status">Estado: esperando</div>
 <div id="noteDisplay">Nota: -</div>
 
@@ -64,7 +65,7 @@ let osc, gainNode;
 
 const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
-function createPiano(){
+(function createPiano(){
   const piano = document.getElementById("piano");
   for(let o=2;o<=5;o++){
     for(let n of notes){
@@ -75,30 +76,37 @@ function createPiano(){
       piano.appendChild(key);
     }
   }
-}
-createPiano();
+})();
 
 async function start(){
   const status = document.getElementById("status");
 
   try {
-    status.innerText = "Pidiendo micrófono...";
+    status.innerText = "Solicitando micrófono...";
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("Tu navegador no soporta micrófono");
+    }
 
     const stream = await navigator.mediaDevices.getUserMedia({audio:true});
 
-    status.innerText = "Micrófono activo 🎤";
+    status.innerText = "Micrófono conectado 🎤";
 
-    audioContext = new AudioContext();
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+ 
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
     input = audioContext.createMediaStreamSource(stream);
 
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 2048;
-
     input.connect(analyser);
 
     detector = Pitchy.PitchDetector.forFloat32Array(analyser.fftSize);
 
-    // crear sonido continuo
     osc = audioContext.createOscillator();
     gainNode = audioContext.createGain();
 
@@ -114,7 +122,7 @@ async function start(){
 
   } catch(e){
     console.error(e);
-    status.innerText = "❌ Error: activa permisos o usa Chrome";
+    status.innerText = "❌ Error: usa Chrome o revisa permisos";
   }
 }
 
@@ -124,9 +132,10 @@ function detect(){
 
   const [pitch, clarity] = detector.findPitch(buffer, audioContext.sampleRate);
 
-  if(clarity > 0.9 && pitch > 80 && pitch < 1000){
+  if(clarity > 0.85 && pitch > 80 && pitch < 1000){
+
     pitchHistory.push(pitch);
-    if(pitchHistory.length > 5) pitchHistory.shift();
+    if(pitchHistory.length > 6) pitchHistory.shift();
 
     let avg = pitchHistory.reduce((a,b)=>a+b,0)/pitchHistory.length;
 
@@ -135,7 +144,7 @@ function detect(){
     if(note !== lastNote){
       highlight(note);
       document.getElementById("noteDisplay").innerText =
-        "Nota: " + note + " (" + avg.toFixed(1)+" Hz)";
+        "Nota: " + note + " (" + avg.toFixed(1) + " Hz)";
       lastNote = note;
     }
 
@@ -149,13 +158,16 @@ function detect(){
   requestAnimationFrame(detect);
 }
 
+
 function freqToNote(freq){
-  const A4=440;
-  let n=12*Math.log2(freq/A4);
-  let i=Math.round(n)+57;
-  let octave=Math.floor(i/12);
-  let name=notes[i%12];
-  return name+octave;
+  const A4 = 440;
+  let n = 12 * Math.log2(freq / A4);
+  let i = Math.round(n) + 57;
+
+  let octave = Math.floor(i / 12);
+  let name = notes[i % 12];
+
+  return name + octave;
 }
 
 function highlight(note){
