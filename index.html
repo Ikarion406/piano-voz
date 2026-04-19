@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Piano con Voz FUNCIONAL</title>
+
+<style>
+body {
+  background:#111;
+  color:white;
+  font-family:Arial;
+  text-align:center;
+}
+
+#piano {
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  margin-top:20px;
+}
+
+.key {
+  width:35px;
+  height:160px;
+  margin:1px;
+  background:white;
+  color:black;
+  font-size:10px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+}
+
+.active {
+  background:#00ffcc !important;
+}
+
+button {
+  margin-top:20px;
+  padding:10px 20px;
+  font-size:16px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎤 Piano con Voz</h1>
+<button onclick="start()">Iniciar</button>
+<div id="status">Estado: esperando</div>
+<div id="noteDisplay">Nota: -</div>
+
+<div id="piano"></div>
+
+<script src="https://unpkg.com/pitchy@2.0.3/dist/pitchy.min.js"></script>
+
+<script>
+let audioContext, analyser, detector, input;
+let lastNote = "";
+let pitchHistory = [];
+
+let osc, gainNode;
+
+const notes = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+function createPiano(){
+  const piano = document.getElementById("piano");
+  for(let o=2;o<=5;o++){
+    for(let n of notes){
+      let key=document.createElement("div");
+      key.className="key";
+      key.id=n+o;
+      key.innerText=n+o;
+      piano.appendChild(key);
+    }
+  }
+}
+createPiano();
+
+async function start(){
+  const status = document.getElementById("status");
+
+  try {
+    status.innerText = "Pidiendo micrófono...";
+
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+
+    status.innerText = "Micrófono activo 🎤";
+
+    audioContext = new AudioContext();
+    input = audioContext.createMediaStreamSource(stream);
+
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
+
+    input.connect(analyser);
+
+    detector = Pitchy.PitchDetector.forFloat32Array(analyser.fftSize);
+
+    // crear sonido continuo
+    osc = audioContext.createOscillator();
+    gainNode = audioContext.createGain();
+
+    osc.type = "triangle";
+    gainNode.gain.value = 0;
+
+    osc.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    osc.start();
+
+    detect();
+
+  } catch(e){
+    console.error(e);
+    status.innerText = "❌ Error: activa permisos o usa Chrome";
+  }
+}
+
+function detect(){
+  const buffer = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(buffer);
+
+  const [pitch, clarity] = detector.findPitch(buffer, audioContext.sampleRate);
+
+  if(clarity > 0.9 && pitch > 80 && pitch < 1000){
+    pitchHistory.push(pitch);
+    if(pitchHistory.length > 5) pitchHistory.shift();
+
+    let avg = pitchHistory.reduce((a,b)=>a+b,0)/pitchHistory.length;
+
+    let note = freqToNote(avg);
+
+    if(note !== lastNote){
+      highlight(note);
+      document.getElementById("noteDisplay").innerText =
+        "Nota: " + note + " (" + avg.toFixed(1)+" Hz)";
+      lastNote = note;
+    }
+
+    osc.frequency.setTargetAtTime(avg, audioContext.currentTime, 0.05);
+    gainNode.gain.setTargetAtTime(0.3, audioContext.currentTime, 0.05);
+
+  } else {
+    gainNode.gain.setTargetAtTime(0, audioContext.currentTime, 0.1);
+  }
+
+  requestAnimationFrame(detect);
+}
+
+function freqToNote(freq){
+  const A4=440;
+  let n=12*Math.log2(freq/A4);
+  let i=Math.round(n)+57;
+  let octave=Math.floor(i/12);
+  let name=notes[i%12];
+  return name+octave;
+}
+
+function highlight(note){
+  document.querySelectorAll(".key").forEach(k=>k.classList.remove("active"));
+  let el=document.getElementById(note);
+  if(el) el.classList.add("active");
+}
+</script>
+
+</body>
+</html>
